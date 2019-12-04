@@ -19,33 +19,33 @@ our $last_config;
 
 sub new {
     my ($class) = @_;
-    
+
     my $self = $class->SUPER::new(undef, -1, 'Slic3r', wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE);
     if ($^O eq 'MSWin32') {
         $self->SetIcon(Wx::Icon->new($Slic3r::var->("Slic3r.ico"), wxBITMAP_TYPE_ICO));
     } else {
-        $self->SetIcon(Wx::Icon->new($Slic3r::var->("Slic3r_128px.png"), wxBITMAP_TYPE_PNG));        
+        $self->SetIcon(Wx::Icon->new($Slic3r::var->("Slic3r_128px.png"), wxBITMAP_TYPE_PNG));
     }
-    
+
     $self->{loaded} = 0;
     $self->{preset_editor_tabs} = {};  # group => panel
-    
+
     # initialize tabpanel and menubar
     $self->_init_tabpanel;
     $self->_init_menubar;
-    
+
     # set default tooltip timer in msec
     # SetAutoPop supposedly accepts long integers but some bug doesn't allow for larger values
     # (SetAutoPop is not available on GTK.)
     eval { Wx::ToolTip::SetAutoPop(32767) };
-    
+
     # initialize status bar
     $self->{statusbar} = Slic3r::GUI::ProgressStatusBar->new($self, -1);
     $self->{statusbar}->SetStatusText("Version $Slic3r::VERSION - Remember to check for updates at http://slic3r.org/");
     $self->SetStatusBar($self->{statusbar});
-    
+
     $self->{loaded} = 1;
-    
+
     # initialize layout
     {
         my $sizer = Wx::BoxSizer->new(wxVERTICAL);
@@ -59,17 +59,17 @@ sub new {
         $self->Show;
         $self->Layout;
     }
-    
+
     # declare events
     EVT_CLOSE($self, sub {
         my (undef, $event) = @_;
-        
+
         if ($event->CanVeto) {
             if (!$self->{plater}->prompt_unsaved_changes) {
                 $event->Veto;
                 return;
             }
-            
+
             if ($self->{controller} && $self->{controller}->printing) {
                 my $confirm = Wx::MessageDialog->new($self, "You are currently printing. Do you want to stop printing and continue anyway?",
                     'Unfinished Print', wxICON_QUESTION | wxYES_NO | wxNO_DEFAULT);
@@ -79,26 +79,26 @@ sub new {
                 }
             }
         }
-        
+
         # save window size
         wxTheApp->save_window_pos($self, "main_frame");
-        
+
         # propagate event
         $event->Skip;
     });
-    
+
     return $self;
 }
 
 sub _init_tabpanel {
     my ($self) = @_;
-    
+
     $self->{tabpanel} = my $panel = Wx::Notebook->new($self, -1, wxDefaultPosition, wxDefaultSize, wxNB_TOP | wxTAB_TRAVERSAL);
     EVT_NOTEBOOK_PAGE_CHANGED($self, $self->{tabpanel}, sub {
         my $panel = $self->{tabpanel}->GetCurrentPage;
         $panel->OnActivate if $panel->can('OnActivate');
     });
-    
+
     $panel->AddPage($self->{plater} = Slic3r::GUI::Plater->new($panel), "Plater");
     $panel->AddPage($self->{controller} = Slic3r::GUI::Controller->new($panel), "Controller")
         if ($Slic3r::GUI::Settings->{_}{show_host});
@@ -113,7 +113,7 @@ sub _init_tabpanel {
 
 sub _init_menubar {
     my ($self) = @_;
-    
+
     # File menu
     my $fileMenu = Wx::Menu->new;
     {
@@ -177,11 +177,11 @@ sub _init_menubar {
             $self->Close(0);
         }, wxID_EXIT);
     }
-    
+
     # Plater menu
     {
         my $plater = $self->{plater};
-        
+
         $self->{plater_menu} = Wx::Menu->new;
         {
             my $selectMenu = $self->{plater_select_menu} = Wx::Menu->new;
@@ -220,7 +220,7 @@ sub _init_menubar {
         $self->on_plater_object_list_changed(0);
         $self->on_plater_selection_changed(0);
     }
-    
+
     # Settings menu
     my $settingsMenu = Wx::Menu->new;
     {
@@ -272,7 +272,7 @@ sub _init_menubar {
             $self->{color_toolpaths_by_extruder}->Check(1);
         }
     }
-    
+
     # Window menu
     my $windowMenu = Wx::Menu->new;
     {
@@ -299,7 +299,7 @@ sub _init_menubar {
             $self->{plater}->resume_background_process;
         }, undef, 'film.png');
     }
-    
+
     # Help menu
     my $helpMenu = Wx::Menu->new;
     {
@@ -322,7 +322,16 @@ sub _init_menubar {
             wxTheApp->about;
         });
     }
-    
+
+    # Help menu
+    my $bioSlic3r = Wx::Menu->new;
+    {
+        $bioSlic3r->AppendSeparator();
+        wxTheApp->append_menu_item($bioSlic3r, "&Bioprinting Instructions", 'Show bioprinting recommendations', sub {
+            wxTheApp->bp;
+        });
+    }
+
     # menubar
     # assign menubar to frame after appending items, otherwise special items
     # will not be handled correctly
@@ -335,6 +344,7 @@ sub _init_menubar {
         $menubar->Append($self->{viewMenu}, "&View") if $self->{viewMenu};
         $menubar->Append($windowMenu, "&Window");
         $menubar->Append($helpMenu, "&Help");
+        $menubar->Append($bioSlic3r, "&BioSlic3r");
         $self->SetMenuBar($menubar);
     }
 }
@@ -353,7 +363,7 @@ sub on_undo_redo_stacks_changed {
 
 sub on_plater_object_list_changed {
     my ($self, $have_objects) = @_;
-    
+
     return if !defined $self->{plater_menu};
     $self->{plater_menu}->Enable($_->GetId, $have_objects)
         for $self->{plater_menu}->GetMenuItems;
@@ -362,7 +372,7 @@ sub on_plater_object_list_changed {
 
 sub on_plater_selection_changed {
     my ($self, $have_selection) = @_;
-    
+
     return if !defined $self->{object_menu};
     $self->{object_menu}->Enable($_->GetId, $have_selection)
         for $self->{object_menu}->GetMenuItems;
@@ -373,13 +383,13 @@ sub on_plater_selection_changed {
 sub quick_slice {
     my $self = shift;
     my %params = @_;
-    
+
     my $progress_dialog;
     eval {
         # validate configuration
         my $config = $self->{plater}->config;
         $config->validate;
-        
+
         # select input file
         my $input_file;
         my $dir = $Slic3r::GUI::Settings->{recent}{skein_directory} || $Slic3r::GUI::Settings->{recent}{config_directory} || '';
@@ -408,13 +418,13 @@ sub quick_slice {
         my $input_file_basename = basename($input_file);
         $Slic3r::GUI::Settings->{recent}{skein_directory} = dirname($input_file);
         wxTheApp->save_settings;
-        
+
         my $print_center;
         {
             my $bed_shape = Slic3r::Polygon->new_scale(@{$config->bed_shape});
             $print_center = Slic3r::Pointf->new_unscale(@{$bed_shape->bounding_box->center});
         }
-        
+
         my $sprint = Slic3r::Print::Simple->new(
             print_center    => $print_center,
             status_cb       => sub {
@@ -423,14 +433,14 @@ sub quick_slice {
                 $progress_dialog->Update($percent, "$message…");
             },
         );
-        
+
         # keep model around
         my $model = Slic3r::Model->read_from_file($input_file);
-        
+
         $sprint->apply_config($config);
         $sprint->set_model($model);
         # FIXME: populate placeholders (preset names etc.)
-        
+
         # select output file
         my $output_file;
         if ($params{reslice}) {
@@ -451,16 +461,16 @@ sub quick_slice {
             wxTheApp->save_settings;
             $dlg->Destroy;
         }
-        
+
         # show processbar dialog
-        $progress_dialog = Wx::ProgressDialog->new('Slicing…', "Processing $input_file_basename…", 
+        $progress_dialog = Wx::ProgressDialog->new('Slicing…', "Processing $input_file_basename…",
             100, $self, 0);
         $progress_dialog->Pulse;
-        
+
         {
             my @warnings = ();
             local $SIG{__WARN__} = sub { push @warnings, $_[0] };
-            
+
             $sprint->output_file($output_file);
             if ($params{export_svg}) {
                 $sprint->export_svg;
@@ -472,10 +482,10 @@ sub quick_slice {
         }
         $progress_dialog->Destroy;
         undef $progress_dialog;
-        
+
         my $message = "$input_file_basename was successfully sliced.";
         wxTheApp->notify($message);
-        Wx::MessageDialog->new($self, $message, 'Slicing Done!', 
+        Wx::MessageDialog->new($self, $message, 'Slicing Done!',
             wxOK | wxICON_INFORMATION)->ShowModal;
     };
     Slic3r::GUI::catch_error($self, sub { $progress_dialog->Destroy if $progress_dialog });
@@ -483,7 +493,7 @@ sub quick_slice {
 
 sub repair_stl {
     my $self = shift;
-    
+
     my $input_file;
     {
         my $dir = $Slic3r::GUI::Settings->{recent}{skein_directory} || $Slic3r::GUI::Settings->{recent}{config_directory} || '';
@@ -495,7 +505,7 @@ sub repair_stl {
         $input_file = Slic3r::decode_path($dialog->GetPaths);
         $dialog->Destroy;
     }
-    
+
     my $output_file = $input_file;
     {
         $output_file =~ s/\.stl$/_fixed.obj/i;
@@ -508,7 +518,7 @@ sub repair_stl {
         $output_file = Slic3r::decode_path($dlg->GetPath);
         $dlg->Destroy;
     }
-    
+
     my $tmesh = Slic3r::TriangleMesh->new;
     $tmesh->ReadSTLFile($input_file);
     $tmesh->repair;
@@ -518,17 +528,17 @@ sub repair_stl {
 
 sub export_config {
     my $self = shift;
-    
+
     my $config = $self->{plater}->config;
     eval {
         # validate configuration
         $config->validate;
     };
     Slic3r::GUI::catch_error($self) and return;
-    
+
     my $dir = $last_config ? dirname($last_config) : $Slic3r::GUI::Settings->{recent}{config_directory} || $Slic3r::GUI::Settings->{recent}{skein_directory} || '';
     my $filename = $last_config ? basename($last_config) : "config.ini";
-    my $dlg = Wx::FileDialog->new($self, 'Save configuration as:', $dir, $filename, 
+    my $dlg = Wx::FileDialog->new($self, 'Save configuration as:', $dir, $filename,
         &Slic3r::GUI::FILE_WILDCARDS->{ini}, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if ($dlg->ShowModal == wxID_OK) {
         my $file = Slic3r::decode_path($dlg->GetPath);
@@ -543,10 +553,10 @@ sub export_config {
 sub load_config_file {
     my $self = shift;
     my ($file) = @_;
-    
+
     if (!$file) {
         my $dir = $last_config ? dirname($last_config) : $Slic3r::GUI::Settings->{recent}{config_directory} || $Slic3r::GUI::Settings->{recent}{skein_directory} || '';
-        my $dlg = Wx::FileDialog->new($self, 'Select configuration to load:', $dir, "config.ini", 
+        my $dlg = Wx::FileDialog->new($self, 'Select configuration to load:', $dir, "config.ini",
                 &Slic3r::GUI::FILE_WILDCARDS->{ini}, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
         return unless $dlg->ShowModal == wxID_OK;
         $file = Slic3r::decode_path($dlg->GetPaths);
@@ -555,7 +565,7 @@ sub load_config_file {
     $Slic3r::GUI::Settings->{recent}{config_directory} = dirname($file);
     wxTheApp->save_settings;
     $last_config = $file;
-    
+
     my $name = wxTheApp->add_external_preset($file);
     $self->{plater}->load_presets;
     $self->{plater}->select_preset_by_name($name, $_) for qw(print filament printer);
@@ -563,7 +573,7 @@ sub load_config_file {
 
 sub import_fromGCode{ # import configuration from gcode file sliced with Slic3r
     my ($self, $file) = @_;
-    
+
     if (!$file) {
         my $dir = $last_config ? dirname($last_config) : $Slic3r::GUI::Settings->{recent}{config_directory} || $Slic3r::GUI::Settings->{recent}{skein_directory} || '';
         my $dlg = Wx::FileDialog->new($self, 'Select GCode File to load config from:', $dir, &Slic3r::GUI::FILE_WILDCARDS->{gcode}, &Slic3r::GUI::FILE_WILDCARDS->{gcode}, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
@@ -571,10 +581,10 @@ sub import_fromGCode{ # import configuration from gcode file sliced with Slic3r
         $file = Slic3r::decode_path($dlg->GetPaths);
         $dlg->Destroy;
     }
-    
+
     $Slic3r::GUI::Settings->{recent}{config_directory} = dirname($file);
     wxTheApp->save_settings;
-    
+
     # open $file and read the first line to make sure it was sliced using Slic3r
     open(FILEFIRSTLINE, '<', "$file")
         or die( "Can't open file to import gcode: $!" );
@@ -590,7 +600,7 @@ sub import_fromGCode{ # import configuration from gcode file sliced with Slic3r
     open(GFILE, "$file")
         or die( "Can't open file to import gcode: $!" );
     my @lines = reverse <GFILE>; # read the file from the back
-    
+
     my $line;
     my @settinglines="";
     foreach $line (@lines) {
@@ -602,17 +612,17 @@ sub import_fromGCode{ # import configuration from gcode file sliced with Slic3r
             last;
         }
     }
-    
+
     close (GFILE);
-    
+
     # (over-) write config to temp-file -> <gcode-filename.ini>
     my $tempfile = substr $file, 0, rindex( $file, q{.} );
     $tempfile="$tempfile.ini";
-    
+
     open (TEMPFILESETTINGS, "> $tempfile");
     print TEMPFILESETTINGS @settinglines;
     close (TEMPFILESETTINGS);
-    
+
     $self->load_config_file($tempfile);
 
     # todo: do we want to delete the <gcode-filename.ini> file after load_config?
@@ -621,27 +631,27 @@ sub import_fromGCode{ # import configuration from gcode file sliced with Slic3r
 
 sub export_configbundle {
     my $self = shift;
-    
+
     eval {
         # validate current configuration in case it's dirty
         $self->{plater}->config->validate;
     };
     Slic3r::GUI::catch_error($self) and return;
-    
+
     my $dir = $last_config ? dirname($last_config) : $Slic3r::GUI::Settings->{recent}{config_directory} || $Slic3r::GUI::Settings->{recent}{skein_directory} || '';
     my $filename = "Slic3r_config_bundle.ini";
-    my $dlg = Wx::FileDialog->new($self, 'Save presets bundle as:', $dir, $filename, 
+    my $dlg = Wx::FileDialog->new($self, 'Save presets bundle as:', $dir, $filename,
         &Slic3r::GUI::FILE_WILDCARDS->{ini}, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if ($dlg->ShowModal == wxID_OK) {
         my $file = Slic3r::decode_path($dlg->GetPath);
         $Slic3r::GUI::Settings->{recent}{config_directory} = dirname($file);
         wxTheApp->save_settings;
-        
+
         # leave default category empty to prevent the bundle from being parsed as a normal config file
         my $ini = { _ => {} };
         $ini->{settings}{$_} = $Slic3r::GUI::Settings->{_}{$_} for qw(autocenter);
         $ini->{presets} = $Slic3r::GUI::Settings->{presets};
-        
+
         foreach my $section (qw(print filament printer)) {
             my @presets = @{wxTheApp->presets->{$section}};
             foreach my $preset (@presets) {
@@ -649,7 +659,7 @@ sub export_configbundle {
                 $ini->{"$section:" . $preset->name} = $preset->load_config->as_ini->{_};
             }
         }
-        
+
         Slic3r::Config->write_ini($file, $ini);
     }
     $dlg->Destroy;
@@ -657,22 +667,22 @@ sub export_configbundle {
 
 sub load_configbundle {
     my ($self, $file, $skip_no_id) = @_;
-    
+
     if (!$file) {
         my $dir = $last_config ? dirname($last_config) : $Slic3r::GUI::Settings->{recent}{config_directory} || $Slic3r::GUI::Settings->{recent}{skein_directory} || '';
-        my $dlg = Wx::FileDialog->new($self, 'Select configuration to load:', $dir, "config.ini", 
+        my $dlg = Wx::FileDialog->new($self, 'Select configuration to load:', $dir, "config.ini",
                 &Slic3r::GUI::FILE_WILDCARDS->{ini}, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
         return unless $dlg->ShowModal == wxID_OK;
         $file = Slic3r::decode_path($dlg->GetPaths);
         $dlg->Destroy;
     }
-    
+
     $Slic3r::GUI::Settings->{recent}{config_directory} = dirname($file);
     wxTheApp->save_settings;
-    
+
     # load .ini file
     my $ini = Slic3r::Config->read_ini($file);
-    
+
     if ($ini->{settings}) {
         $Slic3r::GUI::Settings->{_}{$_} = $ini->{settings}{$_} for keys %{$ini->{settings}};
         wxTheApp->save_settings;
@@ -687,7 +697,7 @@ sub load_configbundle {
         my ($section, $preset_name) = ($1, $2);
         my $config = Slic3r::Config->load_ini_hash($ini->{$ini_category});
         next if $skip_no_id && !$config->get($section . "_settings_id");
-        
+
         {
             my @current_presets = @{wxTheApp->presets->{$section}};
             my %current_ids = map { $_ => 1 }
@@ -696,22 +706,22 @@ sub load_configbundle {
                 @current_presets;
             next INI_BLOCK if exists $current_ids{$config->get($section . "_settings_id")};
         }
-        
+
         $config->save(sprintf "$Slic3r::GUI::datadir/%s/%s.ini", $section, $preset_name);
         Slic3r::debugf "Imported %s preset %s\n", $section, $preset_name;
         $imported++;
     }
     $self->{plater}->load_presets;
-    
+
     return if !$imported;
-    
+
     my $message = sprintf "%d presets successfully imported.", $imported;
     Slic3r::GUI::show_info($self, $message);
 }
 
 sub load_config {
     my ($self, $config) = @_;
-    
+
     $self->{plater}->load_config($config);
 }
 

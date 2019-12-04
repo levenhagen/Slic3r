@@ -1,11 +1,12 @@
 #include <wx/accel.h>
-#include <wx/utils.h> 
+#include <wx/utils.h>
 
 #include "libslic3r.h"
 
 #include "MainFrame.hpp"
 #include "misc_ui.hpp"
 #include "Dialogs/AboutDialog.hpp"
+#include "Dialogs/BioPrintingDialog.hpp"
 
 namespace Slic3r { namespace GUI {
 
@@ -16,7 +17,7 @@ MainFrame::MainFrame(const wxString& title, const wxPoint& pos, const wxSize& si
         : wxFrame(NULL, wxID_ANY, title, pos, size), loaded(false),
         tabpanel(nullptr), controller(nullptr), plater(nullptr), preset_editor_tabs(std::map<preset_t, PresetEditor*>())
 {
-    this->SetIcon(wxIcon(var("Slic3r_128px.png"), wxBITMAP_TYPE_PNG));        
+    this->SetIcon(wxIcon(var("Slic3r_128px.png"), wxBITMAP_TYPE_PNG));
 
     this->init_tabpanel();
     this->init_menubar();
@@ -77,15 +78,15 @@ MainFrame::MainFrame(const wxString& title, const wxPoint& pos, const wxSize& si
 void MainFrame::init_tabpanel()
 {
     this->tabpanel = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_TOP);
-    auto panel = this->tabpanel; 
+    auto panel = this->tabpanel;
 
-    panel->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, ([=](wxNotebookEvent& e) 
-    { 
+    panel->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, ([=](wxNotebookEvent& e)
+    {
         auto tabpanel = this->tabpanel;
         // TODO: trigger processing for activation event
         if (tabpanel->GetSelection() > 1) {
             tabpanel->SetWindowStyle(tabpanel->GetWindowStyleFlag());
-        } 
+        }
     }), panel->GetId());
 
     this->plater = new Slic3r::GUI::Plater(panel, _("Plater"));
@@ -98,7 +99,7 @@ void MainFrame::init_tabpanel()
         this->plater->show_preset_editor(preset_t::Material,0);
         this->plater->show_preset_editor(preset_t::Printer,0);
     }
-    
+
 }
 
 void MainFrame::init_menubar()
@@ -108,29 +109,29 @@ void MainFrame::init_menubar()
     {
         append_menu_item(menuFile, _(L"Open STL/OBJ/AMF/3MF…"), _("Open a model"), [=](wxCommandEvent& e) { if (this->plater != nullptr) this->plater->add();}, wxID_ANY, "brick_add.png", "Ctrl+O");
     }
-    
+
     wxMenu* menuPlater = this->plater_menu = new wxMenu();
     {
         wxMenu* selectMenu = this->plater_select_menu = new wxMenu();
-        append_submenu(menuPlater, _("Select"), _("Select an object in the plater"), selectMenu, wxID_ANY, "brick.png"); 
+        append_submenu(menuPlater, _("Select"), _("Select an object in the plater"), selectMenu, wxID_ANY, "brick.png");
         append_menu_item(menuPlater, _("Undo"), _("Undo"), [this](wxCommandEvent& e) { this->plater->undo(); }, wxID_ANY, "arrow_undo.png", "Ctrl+Z");
         append_menu_item(menuPlater, _("Redo"), _("Redo"), [this](wxCommandEvent& e) { this->plater->redo(); }, wxID_ANY, "arrow_redo.png", "Ctrl+Shift+Z");
-        append_menu_item(menuPlater, _("Select Next Object"), _("Select Next Object in the plater"), 
+        append_menu_item(menuPlater, _("Select Next Object"), _("Select Next Object in the plater"),
                 [this](wxCommandEvent& e) { this->plater->select_next(); }, wxID_ANY, "arrow_right.png", "Ctrl+Right");
-        append_menu_item(menuPlater, _("Select Prev Object"), _("Select Previous Object in the plater"), 
+        append_menu_item(menuPlater, _("Select Prev Object"), _("Select Previous Object in the plater"),
                 [this](wxCommandEvent& e) { this->plater->select_prev(); }, wxID_ANY, "arrow_left.png", "Ctrl+Left");
-        append_menu_item(menuPlater, _("Zoom In"), _("Zoom In"), 
+        append_menu_item(menuPlater, _("Zoom In"), _("Zoom In"),
                 [this](wxCommandEvent& e) { this->plater->zoom(Zoom::In); }, wxID_ANY, "zoom_in.png", "Ctrl+Up");
-        append_menu_item(menuPlater, _("Zoom Out"), _("Zoom Out"), 
+        append_menu_item(menuPlater, _("Zoom Out"), _("Zoom Out"),
                 [this](wxCommandEvent& e) { this->plater->zoom(Zoom::In); }, wxID_ANY, "zoom_out.png", "Ctrl+Down");
         menuPlater->AppendSeparator();
-        append_menu_item(menuPlater, _("Export G-code..."), _("Export current plate as G-code"), 
+        append_menu_item(menuPlater, _("Export G-code..."), _("Export current plate as G-code"),
                 [this](wxCommandEvent& e) { this->plater->export_gcode(); }, wxID_ANY, "cog_go.png");
-        append_menu_item(menuPlater, _("Export plate as STL..."), _("Export current plate as STL"), 
+        append_menu_item(menuPlater, _("Export plate as STL..."), _("Export current plate as STL"),
                 [this](wxCommandEvent& e) { this->plater->export_stl(); }, wxID_ANY, "brick_go.png");
-        append_menu_item(menuPlater, _("Export plate with modifiers as AMF..."), _("Export current plate as AMF, including all modifier meshes"), 
+        append_menu_item(menuPlater, _("Export plate with modifiers as AMF..."), _("Export current plate as AMF, including all modifier meshes"),
                 [this](wxCommandEvent& e) { this->plater->export_amf(); }, wxID_ANY, "brick_go.png");
-        append_menu_item(menuPlater, _("Export plate with modifiers as 3MF..."), _("Export current plate as 3MF, including all modifier meshes"), 
+        append_menu_item(menuPlater, _("Export plate with modifiers as 3MF..."), _("Export current plate as 3MF, including all modifier meshes"),
                 [this](wxCommandEvent& e) { this->plater->export_tmf(); }, wxID_ANY, "brick_go.png");
 
 
@@ -153,7 +154,7 @@ void MainFrame::init_menubar()
     {
         // TODO: Reimplement config wizard
         //menuHelp->AppendSeparator();
-        append_menu_item(menuHelp, _("Slic3r &Website"), _("Open the Slic3r website in your browser"), [=](wxCommandEvent& e) 
+        append_menu_item(menuHelp, _("Slic3r &Website"), _("Open the Slic3r website in your browser"), [=](wxCommandEvent& e)
         {
             wxLaunchDefaultBrowser("http://www.slic3r.org");
         });
@@ -161,19 +162,29 @@ void MainFrame::init_menubar()
         {
             check_version(true);
         });
-        append_menu_item(menuHelp, _("Slic3r &Manual"), _("Open the Slic3r manual in your browser"), [=](wxCommandEvent& e) 
+        append_menu_item(menuHelp, _("Slic3r &Manual"), _("Open the Slic3r manual in your browser"), [=](wxCommandEvent& e)
         {
             wxLaunchDefaultBrowser("http://manual.slic3r.org/");
         });
-        append_menu_item(menuHelp, _("&About Slic3r"), _("Show about dialog"), [=](wxCommandEvent& e) 
+        append_menu_item(menuHelp, _("&About Slic3r"), _("Show about dialog"), [=](wxCommandEvent& e)
         {
             auto about = new AboutDialog(nullptr);
             about->ShowModal();
             about->Destroy();
         }, wxID_ABOUT);
-        
+
     }
 
+    wxMenu* bioSlic3r = new wxMenu();
+    {
+        append_menu_item(bioSlic3r, _("&Bioprinting Instructions"), _("Show bioprinting recommendations"), [=](wxCommandEvent& e)
+        {
+            auto bp = new BioPrintingDialog(nullptr);
+            bp->ShowModal();
+            bp->Destroy();
+        }, wxID_BT);
+
+    }
     wxMenuBar* menubar = new wxMenuBar();
     menubar->Append(menuFile, _("&File"));
     menubar->Append(menuPlater, _("&Plater"));
@@ -182,6 +193,7 @@ void MainFrame::init_menubar()
     menubar->Append(menuView, _("&View"));
     menubar->Append(menuWindow, _("&Window"));
     menubar->Append(menuHelp, _("&Help"));
+    menubar->Append(bioSlicer, _("&BioSlic3r"));
 
     this->SetMenuBar(menubar);
 

@@ -25,6 +25,7 @@ use Slic3r::Geometry qw(X Y);
 use Slic3r::GUI::2DBed;
 use Slic3r::GUI::AboutDialog;
 use Slic3r::GUI::BedShapeDialog;
+use Slic3r::GUI::BioPrintingDialog;
 use Slic3r::GUI::BonjourBrowser;
 use Slic3r::GUI::ConfigWizard;
 use Slic3r::GUI::Controller;
@@ -120,13 +121,13 @@ our $DLP_projection_screen;
 
 sub OnInit {
     my ($self) = @_;
-    
+
     $self->SetAppName('Slic3r');
     Slic3r::debugf "wxWidgets version %s, Wx version %s\n", &Wx::wxVERSION_STRING, $Wx::VERSION;
-    
+
     $self->{notifier} = Slic3r::GUI::Notifier->new;
     $self->{presets} = { print => [], filament => [], printer => [] };
-    
+
     # locate or create data directory
     # Unix: ~/.Slic3r
     # Windows: "C:\Users\username\AppData\Roaming\Slic3r" or "C:\Documents and Settings\username\Application Data\Slic3r"
@@ -134,7 +135,7 @@ sub OnInit {
     $datadir ||= Slic3r::decode_path(Wx::StandardPaths::Get->GetUserDataDir);
     my $enc_datadir = Slic3r::encode_path($datadir);
     Slic3r::debugf "Data directory: %s\n", $datadir;
-    
+
     # just checking for existence of $datadir is not enough: it may be an empty directory
     # supplied as argument to --datadir; in that case we should still run the wizard
     my $run_wizard = (-d $enc_datadir && -e "$enc_datadir/slic3r.ini") ? 0 : 1;
@@ -146,7 +147,7 @@ sub OnInit {
             fatal_error(undef, $error);
         }
     }
-    
+
     # load settings
     my $last_version;
     if (-f "$enc_datadir/slic3r.ini") {
@@ -162,20 +163,20 @@ sub OnInit {
     $Settings->{_}{version} = $Slic3r::VERSION;
     $Settings->{_}{threads} = $threads if $threads;
     $self->save_settings;
-    
+
     if (-f "$enc_datadir/simple.ini") {
         # The Simple Mode settings were already automatically duplicated to presets
         # named "Simple Mode" in each group, so we already support retrocompatibility.
         unlink "$enc_datadir/simple.ini";
     }
-    
+
     $self->load_presets;
-    
+
     # application frame
     Wx::Image::AddHandler(Wx::PNGHandler->new);
     $self->{mainframe} = my $frame = Slic3r::GUI::MainFrame->new;
     $self->SetTopWindow($frame);
-    
+
     # load init bundle
     {
         my @dirs = ($FindBin::Bin);
@@ -191,7 +192,7 @@ sub OnInit {
             $run_wizard = 0;
         }
     }
-    
+
     if (!$run_wizard && (!defined $last_version || $last_version ne $Slic3r::VERSION)) {
         # user was running another Slic3r version on this computer
         if (!defined $last_version || $last_version =~ /^0\./) {
@@ -207,22 +208,22 @@ sub OnInit {
         }
     }
     $self->{mainframe}->config_wizard if $run_wizard;
-    
+
     $self->check_version
         if $self->have_version_check
             && ($Settings->{_}{version_check} // 1)
             && (!$Settings->{_}{last_version_check} || (time - $Settings->{_}{last_version_check}) >= 86400);
-    
+
     EVT_IDLE($frame, sub {
         while (my $cb = shift @cb) {
             $cb->();
         }
     });
-    
+
     EVT_COMMAND($self, -1, $VERSION_CHECK_EVENT, sub {
         my ($self, $event) = @_;
         my ($success, $response, $manual_check) = @{$event->GetData};
-        
+
         if ($success) {
             if ($response =~ /^obsolete ?= ?([a-z0-9.-]+,)*\Q$Slic3r::VERSION\E(?:,|$)/) {
                 my $res = Wx::MessageDialog->new(undef, "A new version is available. Do you want to open the Slic3r website now?",
@@ -237,13 +238,21 @@ sub OnInit {
             Slic3r::GUI::show_error(undef, "Failed to check for updates. Try later.") if $manual_check;
         }
     });
-    
+
     return 1;
+}
+
+sub bp{
+    my ($self) = @_;
+
+    my $bp = Slic3r::GUI::BioPrintingDialog->new(undef);
+    $bp->ShowModal;
+    $bp->Destroy;
 }
 
 sub about {
     my ($self) = @_;
-    
+
     my $about = Slic3r::GUI::AboutDialog->new(undef);
     $about->ShowModal;
     $about->Destroy;
@@ -313,13 +322,13 @@ sub presets { return $_[0]->{presets}; }
 
 sub load_presets {
     my ($self) = @_;
-    
+
     for my $group (qw(printer filament print)) {
         my $presets = $self->{presets}{$group};
-        
+
         # keep external or dirty presets
         @$presets = grep { ($_->external && $_->file_exists) || $_->dirty } @$presets;
-        
+
         my $dir = "$Slic3r::GUI::datadir/$group";
         opendir my $dh, Slic3r::encode_path($dir)
             or die "Failed to read directory $dir (errno: $!)\n";
@@ -327,10 +336,10 @@ sub load_presets {
             $file = Slic3r::decode_path($file);
             my $name = basename($file);
             $name =~ s/\.ini$//i;
-            
+
             # skip if we already have it
             next if any { $_->name eq $name } @$presets;
-            
+
             push @$presets, Slic3r::GUI::Preset->new(
                 group   => $group,
                 name    => $name,
@@ -338,9 +347,9 @@ sub load_presets {
             );
         }
         closedir $dh;
-    
+
         @$presets = sort { $a->name cmp $b->name } @$presets;
-    
+
         unshift @$presets, Slic3r::GUI::Preset->new(
             group   => $group,
             default => 1,
@@ -351,14 +360,14 @@ sub load_presets {
 
 sub add_external_preset {
     my ($self, $file) = @_;
-    
+
     my $name = basename($file);  # keep .ini suffix
     for my $group (qw(printer filament print)) {
         my $presets = $self->{presets}{$group};
-        
+
         # remove any existing preset with the same name
         @$presets = grep { $_->name ne $name } @$presets;
-        
+
         push @$presets, Slic3r::GUI::Preset->new(
             group    => $group,
             name     => $name,
@@ -371,16 +380,16 @@ sub add_external_preset {
 
 sub have_version_check {
     my ($self) = @_;
-    
+
     # return an explicit 0
     return ($Slic3r::have_threads && $Slic3r::VERSION !~ /-dev$/ && $have_LWP) || 0;
 }
 
 sub check_version {
     my ($self, $manual_check) = @_;
-    
+
     Slic3r::debugf "Checking for updates...\n";
-    
+
     @_ = ();
     threads->create(sub {
         my $ua = LWP::UserAgent->new;
@@ -388,14 +397,14 @@ sub check_version {
         my $response = $ua->get('http://slic3r.org/updatecheck');
         Wx::PostEvent($self, Wx::PlThreadEvent->new(-1, $VERSION_CHECK_EVENT,
             threads::shared::shared_clone([ $response->is_success, $response->decoded_content, $manual_check ])));
-        
+
         Slic3r::thread_cleanup();
     })->detach;
 }
 
 sub output_path {
     my ($self, $dir) = @_;
-    
+
     return ($Settings->{_}{last_output_path} && $Settings->{_}{remember_output_path})
         ? $Settings->{_}{last_output_path}
         : $dir;
@@ -403,11 +412,11 @@ sub output_path {
 
 sub open_model {
     my ($self, $window) = @_;
-    
+
     my $dir = $Slic3r::GUI::Settings->{recent}{skein_directory}
            || $Slic3r::GUI::Settings->{recent}{config_directory}
            || '';
-    
+
     my $dialog = Wx::FileDialog->new($window // $self->GetTopWindow, 'Choose one or more files (STL/OBJ/AMF/3MF):', $dir, "",
         MODEL_WILDCARD, wxFD_OPEN | wxFD_MULTIPLE | wxFD_FILE_MUST_EXIST);
     if ($dialog->ShowModal != wxID_OK) {
@@ -416,7 +425,7 @@ sub open_model {
     }
     my @input_files = map Slic3r::decode_path($_), $dialog->GetPaths;
     $dialog->Destroy;
-    
+
     return @input_files;
 }
 
@@ -427,16 +436,16 @@ sub CallAfter {
 
 sub scan_serial_ports {
     my ($self) = @_;
-    
+
     my @ports = ();
-    
+
     if ($^O eq 'MSWin32') {
         # Windows
         if (eval "use Win32::TieRegistry; 1") {
             my $ts = Win32::TieRegistry->new("HKEY_LOCAL_MACHINE\\HARDWARE\\DEVICEMAP\\SERIALCOMM",
                 { Access => 'KEY_READ' });
             if ($ts) {
-                # when no serial ports are available, the registry key doesn't exist and 
+                # when no serial ports are available, the registry key doesn't exist and
                 # TieRegistry->new returns undef
                 $ts->Tie(\my %reg);
                 push @ports, sort values %reg;
@@ -446,37 +455,37 @@ sub scan_serial_ports {
         # UNIX and OS X
         push @ports, glob '/dev/{ttyUSB,ttyACM,tty.,cu.,rfcomm}*';
     }
-    
+
     return grep !/Bluetooth|FireFly/, @ports;
 }
 
 sub append_menu_item {
     my ($self, $menu, $string, $description, $cb, $id, $icon, $kind) = @_;
-    
+
     $id //= &Wx::NewId();
     my $item = Wx::MenuItem->new($menu, $id, $string, $description // '', $kind // 0);
     $self->set_menu_item_icon($item, $icon);
     $menu->Append($item);
-    
+
     EVT_MENU($self, $id, $cb);
     return $item;
 }
 
 sub append_submenu {
     my ($self, $menu, $string, $description, $submenu, $id, $icon) = @_;
-    
+
     $id //= &Wx::NewId();
     my $item = Wx::MenuItem->new($menu, $id, $string, $description // '');
     $self->set_menu_item_icon($item, $icon);
     $item->SetSubMenu($submenu);
     $menu->Append($item);
-    
+
     return $item;
 }
 
 sub set_menu_item_icon {
     my ($self, $menuItem, $icon) = @_;
-    
+
     # SetBitmap was not available on OS X before Wx 0.9927
     if ($icon && $menuItem->can('SetBitmap')) {
         $menuItem->SetBitmap(Wx::Bitmap->new($Slic3r::var->($icon), wxBITMAP_TYPE_PNG));
@@ -485,7 +494,7 @@ sub set_menu_item_icon {
 
 sub save_window_pos {
     my ($self, $window, $name) = @_;
-    
+
     $Settings->{_}{"${name}_pos"}  = join ',', $window->GetScreenPositionXY;
     $Settings->{_}{"${name}_size"} = join ',', $window->GetSizeWH;
     $Settings->{_}{"${name}_maximized"}      = $window->IsMaximized;
@@ -494,11 +503,11 @@ sub save_window_pos {
 
 sub restore_window_pos {
     my ($self, $window, $name) = @_;
-    
+
     if (defined $Settings->{_}{"${name}_pos"}) {
         my $size = [ split ',', $Settings->{_}{"${name}_size"}, 2 ];
         $window->SetSize($size);
-        
+
         my $display = Wx::Display->new->GetClientArea();
         my $pos = [ split ',', $Settings->{_}{"${name}_pos"}, 2 ];
         if (($pos->[X] + $size->[X]/2) < $display->GetRight && ($pos->[Y] + $size->[Y]/2) < $display->GetBottom) {
