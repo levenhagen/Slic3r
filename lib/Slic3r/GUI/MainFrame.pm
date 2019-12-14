@@ -323,13 +323,17 @@ sub _init_menubar {
         });
     }
 
-    # Help menu
+    # BioSlic3r menu
     my $bioSlic3r = Wx::Menu->new;
     {
-        $bioSlic3r->AppendSeparator();
         wxTheApp->append_menu_item($bioSlic3r, "&Bioprinting Instructions", 'Show bioprinting recommendations', sub {
             wxTheApp->bp;
         });
+        $bioSlic3r->AppendSeparator();
+        wxTheApp->append_menu_item($bioSlic3r, "Export PTF File", 'Export current plate in PTF format.', sub {
+            $bioSlic3r->export_gcode;
+        });
+
     }
 
     # menubar
